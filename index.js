@@ -1,38 +1,38 @@
 const { JSDOM } = require('jsdom');
 const nodemailer = require('nodemailer');
-var fs = require("fs");
+const epub = require('epub-gen')
+const path = require('path')
+
+const sender = ''; //邮箱账号
+const pass = ''; //授权码
+const receiver = ''; //收件人
 
 //SMTP客户端配置
 const transporter = nodemailer.createTransport({
     // 默认支持的邮箱服务包括：”QQ”、”163”、”126”、”iCloud”、”Hotmail”、”Yahoo”等
-    service: "QQ",
+    service: "163",
     auth: {
-        //邮箱账号
-        user: '',
-        //授权码
-        pass: ''
+        user: sender,
+        pass: pass
     }
 })
 
 //发送邮件
 async function sendMail() {
     await getNewsContent()
-    const receiver = {
-        //发件人'昵称<发件人邮箱>'
-        from: `"每日新闻联播"<>`,
+     let _receiver = {
+        from: `"每日新闻联播"<${sender}>`,
         subject: "新闻联播",
-        //收件人
-        to: '',
-        html:'123',
+        to: receiver,
         attachments: [
             {
-                filename: 'news.txt',
-                path: './News.txt'
+                filename: 'News.epub',
+                path: './News.epub'
             }
         ]
     }
 
-    transporter.sendMail(receiver, (error, info) => {
+    transporter.sendMail(_receiver, (error, info) => {
         if (error) {
             return console.log('发送失败:', error);
         }
@@ -43,32 +43,32 @@ async function sendMail() {
 
 //获取年月日
 function getDate() {
-    const currentDate = new Date();
-    const year = currentDate.getFullYear();
-    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-    const day = String(currentDate.getDate()).padStart(2, '0');
+     let currentDate = new Date();
+     let year = currentDate.getFullYear();
+     let month = String(currentDate.getMonth() + 1).padStart(2, '0');
+     let day = String(currentDate.getDate()).padStart(2, '0');
 
     return { year, month, day };
 }
 function getPreviousDate(year, month, day) {
-    const currentDate = new Date(year, month - 1, day);
-    const previousDate = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
+     let currentDate = new Date(year, month - 1, day);
+     let previousDate = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
 
-    const previousYear = previousDate.getFullYear();
-    const previousMonth = (previousDate.getMonth() + 1).toString().padStart(2, '0');
-    const previousDay = previousDate.getDate().toString().padStart(2, '0');
+     let previousYear = previousDate.getFullYear();
+     let previousMonth = (previousDate.getMonth() + 1).toString().padStart(2, '0');
+     let previousDay = previousDate.getDate().toString().padStart(2, '0');
 
     return { previousYear, previousMonth, previousDay };
 }
 
 async function getNewsContent() {
     //获取内容
-    const { year, month, day } = getDate();
+     let { year, month, day } = getDate();
     let url = encodeURI(`http://mrxwlb.com/${year}/${month}/${day}/${year}年${month}月${day}日新闻联播文字版`)
     let res = await fetch(url);
     res = await res.text();
     if (res.includes('Ooops.. 404.')) {
-        const { previousYear, previousMonth, previousDay } = getPreviousDate(year, month, day);
+         let { previousYear, previousMonth, previousDay } = getPreviousDate(year, month, day);
         url = encodeURI(`http://mrxwlb.com/${previousYear}/${previousMonth}/${previousDay}/${previousYear}年${previousMonth}月${previousDay}日新闻联播文字版`)
         res = await fetch(url);
         res = await res.text();
@@ -78,19 +78,44 @@ async function getNewsContent() {
     }
 
     //处理内容
-    const dom = new JSDOM(res, { includeNodeLocations: true });
-    const doc = dom.window.document;
-    const section = doc.querySelector('section.entry-content');
-    const content = section.innerHTML.replace(/<\/?[^>]+(>|$)/g, '').replace(/<\/?[^>]+(>|$)/g, '');
+    let dom = new JSDOM(res, { includeNodeLocations: true });
+    let doc = dom.window.document;
+    let section = doc.querySelector('section.entry-content');
+    let content = section.innerHTML.split('\n<p><strong>');
+    let chapter = [];
+    for(num in content){
+        if(num >= 1 && content[num] != '国内联播快讯</strong></p>\n<p></p>'
+        ){
+            let lineArr = content[num].split('\n')
+            let data;
+            for(num in lineArr){
+                if(num >= 1){
+                    data = data + lineArr[num] + '\n';
+                }
+            }
+            let  chatper_O = {
+                title: lineArr[0].replace('</strong></p>' , ''),
+                data: data.replace('undefined' , ''),
+            };
+            chapter.push(chatper_O);
+        }
+    }
 
     // 将内容写入文件
-    fs.writeFile('News.txt', content, (err) => {
-        if (err) {
-            console.error('写入文件出错:', err);
-        } else {
-            console.log('内容已保存至 News.txt');
-        }
-    });
+    const epubOption = {
+        title: `${year}/${month}/${day}/${year}年${month}月${day}日新闻联播文字版`,
+        author: 'songsanggggg',
+        publisher: 'songsanggggg',
+        cover: 'https://s11.ax1x.com/2023/12/31/piX9LKs.jpg',
+        content: chapter
+    };
+
+    try {
+        await new epub(epubOption, 'News.epub').promise;
+        console.log('EPUB generated successfully');
+    } catch (error) {
+        console.error('Failed to generate EPUB:', error);
+    }
 }
 
 sendMail().catch(error => {
